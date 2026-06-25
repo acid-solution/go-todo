@@ -76,15 +76,23 @@ async function updateTodo(todo) {
   const title = prompt("新的任务名称", todo.title);
   if (title === null) return;
 
-  const description = prompt("新的任务描述", todo.description);
+  const description = prompt("新的任务描述", todo.description || "");
   if (description === null) return;
+
+  const trimmedTitle = title.trim();
+  const trimmedDescription = description.trim();
+
+  if (!trimmedTitle) {
+    alert("任务名称不能为空");
+    return;
+  }
 
   try {
     await request(`${API_BASE}/${todo.id}`, {
       method: "PUT",
       body: JSON.stringify({
-        title: title.trim(),
-        description: description.trim(),
+        title: trimmedTitle,
+        description: trimmedDescription,
       }),
     });
 
@@ -120,12 +128,12 @@ function renderTodos(todos) {
 
   for (const todo of todos) {
     const item = document.createElement("div");
-    item.className = `todo-item ${todo.done ? "done" : ""}`;
+    item.className = `todo-item ${todo.completed ? "done" : ""}`;
 
     item.innerHTML = `
       <div class="todo-title"></div>
       <div class="todo-desc"></div>
-      <button class="done-btn">${todo.done ? "已完成" : "完成"}</button>
+      <button class="done-btn">${todo.completed ? "已完成" : "完成"}</button>
       <button class="update-btn">更新</button>
       <button class="delete-btn">删除</button>
     `;
@@ -133,7 +141,14 @@ function renderTodos(todos) {
     item.querySelector(".todo-title").textContent = todo.title;
     item.querySelector(".todo-desc").textContent = todo.description || "-";
 
-    item.querySelector(".done-btn").addEventListener("click", () => completeTodo(todo.id));
+    const doneBtn = item.querySelector(".done-btn");
+
+    if (todo.completed) {
+      doneBtn.disabled = true;
+    } else {
+      doneBtn.addEventListener("click", () => completeTodo(todo.id));
+    }
+
     item.querySelector(".update-btn").addEventListener("click", () => updateTodo(todo));
     item.querySelector(".delete-btn").addEventListener("click", () => deleteTodo(todo.id));
 
