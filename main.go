@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
-	"sort"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -183,20 +182,48 @@ func createTodo(c *gin.Context) {
 
 // 列表返回函数
 func listTodos(c *gin.Context) {
-	//创建一个业务模型的列表（转json）用来装该返回的任务
-	todos := make([]*Todo, 0, len(store.todos))
+	//查询数据库，按创建时间倒序排列
+	rows, err := db.Query(
+		`SELECT id, title, description, completed, created_at, updated_at
+		 FROM todos
+		 ORDER BY created_at DESC, id DESC`,
+	)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "查询任务列表失败")
+		return
+	}
+	//rows是一个迭代器，是从数据库一条一条读取数据的，所以要记得关闭
+	defer rows.Close()
 
-	//从数据库里取出数据装进列表
-	for _, todo := range store.todos {
-		todos = append(todos, todo)
+	//创建一个业务模型切片来存储任务列表
+	todos := make([]*Todo, 0)
+	//用rows.Next()迭代器来遍历查询结结果集
+	for rows.Next() {
+		var todo Todo
+		//用rows.Scan()来把查询结果集的每一行数据扫描到业务模型中
+		err := rows.Scan(
+			&todo.ID,
+			&todo.Title,
+			&todo.Description,
+			&todo.Completed,
+			&todo.CreatedAt,
+			&todo.UpdatedAt,
+		)
+		//如果扫描失败，返回错误信息
+		if err != nil {
+			fail(c, http.StatusInternalServerError, "解析任务列表失败")
+			return
+		}
+		//把业务模型添加到切片中
+		todos = append(todos, &todo)
+	}
+	//检查迭代器是否有报错，迭代器报错是有没有正确完成迭代，任务错误在内部的scan就处理了
+	if err := rows.Err(); err != nil {
+		fail(c, http.StatusInternalServerError, "读取任务列表失败")
+		return
 	}
 
-	//因为用map模拟数据库，所以需要排序一下
-	sort.Slice(todos, func(i, j int) bool {
-		return todos[i].ID < todos[j].ID
-	})
-
-	//把业务模型转换成响应模型
+	//创建一个响应模型切片来返回给前端
 	resp := make([]TodoResponse, 0, len(todos))
 	for _, todo := range todos {
 		resp = append(resp, toTodoResponse(todo))
