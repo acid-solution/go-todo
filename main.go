@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -235,27 +236,53 @@ func listTodos(c *gin.Context) {
 // 更新任务函数
 func updateTodo(c *gin.Context) {
 	var idReq TodoIDRequest
-	//获取id
+
+	// 获取路径参数 id
 	if err := c.ShouldBindUri(&idReq); err != nil {
 		fail(c, http.StatusBadRequest, "无效的任务 ID")
 		return
 	}
 
 	var req UpdateTodoRequest
-	//获取任务名称和任务描述
+
+	// 获取任务名称和任务描述
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "任务名称不能为空")
 		return
 	}
-	//新建业务模型，查询数据库
-	todo, exists := store.todos[idReq.ID]
-	if !exists {
+
+	// 更新数据库
+	result, err := db.Exec(
+		`UPDATE todos
+		 SET title = ?, description = ?
+		 WHERE id = ?`,
+		req.Title,
+		req.Description,
+		idReq.ID,
+	)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "更新任务失败")
+		return
+	}
+
+	// 表示刚才的更新更新了多少行
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "获取更新结果失败")
+		return
+	}
+	// 如果没有更新任何行，说明任务不存在，返回404
+	if rowsAffected == 0 {
 		fail(c, http.StatusNotFound, "任务不存在")
 		return
 	}
-	//完善业务模型
-	todo.Title = req.Title
-	todo.Description = req.Description
+
+	// 查询更新后的最新任务
+	todo, err := getTodoByID(idReq.ID)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "查询更新后的任务失败")
+		return
+	}
 
 	success(c, toTodoResponse(todo))
 }
@@ -263,19 +290,43 @@ func updateTodo(c *gin.Context) {
 // 标记完成函数
 func completeTodo(c *gin.Context) {
 	var idReq TodoIDRequest
-	//获取id
+
+	// 获取路径参数 id
 	if err := c.ShouldBindUri(&idReq); err != nil {
 		fail(c, http.StatusBadRequest, "无效的任务 ID")
 		return
 	}
-	//创建业务模型
-	todo, exists := store.todos[idReq.ID]
-	if !exists {
-		fail(c, http.StatusNotFound, "任务不存在")
+
+	// 先查询任务是否存在
+	_, err := getTodoByID(idReq.ID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			fail(c, http.StatusNotFound, "任务不存在")
+			return
+		}
+
+		fail(c, http.StatusInternalServerError, "查询任务失败")
 		return
 	}
-	//修改数据库
-	todo.Completed = true
+
+	// 更新数据库，将任务标记为已完成
+	_, err = db.Exec(
+		`UPDATE todos
+		 SET completed = 1
+		 WHERE id = ?`,
+		idReq.ID,
+	)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "标记任务完成失败")
+		return
+	}
+
+	// 查询更新后的最新任务
+	todo, err := getTodoByID(idReq.ID)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "查询更新后的任务失败")
+		return
+	}
 
 	success(c, toTodoResponse(todo))
 }
@@ -283,18 +334,35 @@ func completeTodo(c *gin.Context) {
 // 删除任务函数
 func deleteTodo(c *gin.Context) {
 	var idReq TodoIDRequest
-	//获取id
+
+	// 获取路径参数 id
 	if err := c.ShouldBindUri(&idReq); err != nil {
 		fail(c, http.StatusBadRequest, "无效的任务 ID")
 		return
 	}
-	//删除操作不需要业务模型，所以只查数据库就行
-	if _, exists := store.todos[idReq.ID]; !exists {
+
+	// 删除数据库中的任务
+	result, err := db.Exec(
+		`DELETE FROM todos
+		 WHERE id = ?`,
+		idReq.ID,
+	)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "删除任务失败")
+		return
+	}
+
+	// 判断是否真的删除了数据
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "获取删除结果失败")
+		return
+	}
+
+	if rowsAffected == 0 {
 		fail(c, http.StatusNotFound, "任务不存在")
 		return
 	}
-	//操作数据库，这里是go里map的内置操作
-	delete(store.todos, idReq.ID)
 
 	success(c, nil)
 }
