@@ -55,23 +55,6 @@ type APIResponse struct {
 	Data    any    `json:"data"`
 }
 
-// 用内存模拟数据库
-type TodoStore struct {
-	todos  map[int64]*Todo
-	nextID int64
-}
-
-// 构造函数
-func NewTodoStore() *TodoStore {
-	return &TodoStore{
-		todos:  make(map[int64]*Todo),
-		nextID: 1,
-	}
-}
-
-// 使用后端内存的临时测试用数据库
-var store = NewTodoStore()
-
 // 数据库连接对象，只是一个入口
 var db *sql.DB
 
