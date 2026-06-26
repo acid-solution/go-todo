@@ -48,6 +48,13 @@ type TodoIDRequest struct {
 	ID int64 `uri:"id" binding:"required"`
 }
 
+// 查询请求体
+type ListTodoRequest struct {
+	Page      int    `form:"page"`
+	PageSize  int    `form:"page_size"`
+	Completed string `form:"completed"`
+}
+
 // 统一响应体
 type APIResponse struct {
 	Code    int    `json:"code"`
@@ -166,12 +173,59 @@ func createTodo(c *gin.Context) {
 
 // 列表返回函数
 func listTodos(c *gin.Context) {
-	//查询数据库，按创建时间倒序排列
-	rows, err := db.Query(
-		`SELECT id, title, description, completed, created_at, updated_at
-		 FROM todos
-		 ORDER BY created_at DESC, id DESC`,
-	)
+	var req ListTodoRequest
+	//从前端请求中绑定查询参数
+	if err := c.ShouldBindQuery(&req); err != nil {
+		fail(c, http.StatusBadRequest, "查询参数无效")
+		return
+	}
+	//如果没有传入分页参数，设置默认值
+	if req.Page == 0 {
+		req.Page = 1
+	}
+	if req.PageSize == 0 {
+		req.PageSize = 10
+	}
+	//校验参数是否合法
+	if req.Page < 1 {
+		fail(c, http.StatusBadRequest, "page 必须大于等于 1")
+		return
+	}
+	if req.PageSize < 1 || req.PageSize > 100 {
+		fail(c, http.StatusBadRequest, "page_size 必须在 1 到 100 之间")
+		return
+	}
+	if req.Completed != "" && req.Completed != "true" && req.Completed != "false" {
+		fail(c, http.StatusBadRequest, "completed 只能是 true 或 false")
+		return
+	}
+	//计算偏移量
+	offset := (req.Page - 1) * req.PageSize
+	//拼接上半
+	query := `
+		SELECT id, title, description, completed, created_at, updated_at
+		FROM todos
+	`
+	// 创建一个切片来存储查询参数
+	args := make([]any, 0)
+	// 如果传入了 completed 参数，则添加 WHERE 子句和查询参数
+	if req.Completed != "" {
+		completed := req.Completed == "true"
+		query += `
+			WHERE completed = ?
+		`
+		args = append(args, completed)
+	}
+	// 拼接下半
+	query += `
+		ORDER BY created_at DESC, id DESC
+		LIMIT ? OFFSET ?
+	`
+	// 收集所有参数
+	args = append(args, req.PageSize, offset)
+	// 使用参数和拼接好的SQL语句查询数据库
+	rows, err := db.Query(query, args...)
+
 	if err != nil {
 		fail(c, http.StatusInternalServerError, "查询任务列表失败")
 		return
