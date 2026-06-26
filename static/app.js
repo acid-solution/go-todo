@@ -3,10 +3,45 @@ const titleInput = document.querySelector("#titleInput");
 const descInput = document.querySelector("#descInput");
 const createBtn = document.querySelector("#createBtn");
 
+const completedFilter = document.querySelector("#completedFilter");
+const pageSizeSelect = document.querySelector("#pageSizeSelect");
+const prevPageBtn = document.querySelector("#prevPageBtn");
+const nextPageBtn = document.querySelector("#nextPageBtn");
+const pageInfo = document.querySelector("#pageInfo");
+
 const API_BASE = "/api/todos";
 
+let currentPage = 1;
+let pageSize = 10;
+let currentCompleted = "";
+
 document.addEventListener("DOMContentLoaded", loadTodos);
+
 createBtn.addEventListener("click", createTodo);
+
+completedFilter.addEventListener("change", () => {
+  currentCompleted = completedFilter.value;
+  currentPage = 1;
+  loadTodos();
+});
+
+pageSizeSelect.addEventListener("change", () => {
+  pageSize = Number(pageSizeSelect.value);
+  currentPage = 1;
+  loadTodos();
+});
+
+prevPageBtn.addEventListener("click", () => {
+  if (currentPage <= 1) return;
+
+  currentPage--;
+  loadTodos();
+});
+
+nextPageBtn.addEventListener("click", () => {
+  currentPage++;
+  loadTodos();
+});
 
 async function request(url, options = {}) {
   const resp = await fetch(url, {
@@ -25,13 +60,37 @@ async function request(url, options = {}) {
   return result.data;
 }
 
+function buildListUrl() {
+  const params = new URLSearchParams();
+
+  params.set("page", currentPage);
+  params.set("page_size", pageSize);
+
+  if (currentCompleted !== "") {
+    params.set("completed", currentCompleted);
+  }
+
+  return `${API_BASE}?${params.toString()}`;
+}
+
 async function loadTodos() {
   try {
-    const todos = await request(API_BASE);
+    const todos = await request(buildListUrl());
     renderTodos(todos || []);
+    updatePager(todos || []);
   } catch (err) {
     alert(err.message);
   }
+}
+
+function updatePager(todos) {
+  pageInfo.textContent = `第 ${currentPage} 页`;
+
+  prevPageBtn.disabled = currentPage <= 1;
+
+  // 后端暂时没有返回 total，所以这里只能粗略判断：
+  // 如果当前页数量少于 pageSize，就认为后面没有下一页。
+  nextPageBtn.disabled = todos.length < pageSize;
 }
 
 async function createTodo() {
@@ -54,6 +113,9 @@ async function createTodo() {
 
     titleInput.value = "";
     descInput.value = "";
+
+    // 新任务按 created_at 倒序排，创建后回到第一页更合理
+    currentPage = 1;
     await loadTodos();
   } catch (err) {
     alert(err.message);

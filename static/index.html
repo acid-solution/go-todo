@@ -16,6 +16,24 @@
       <button id="createBtn">创建</button>
     </section>
 
+    <section class="filter-panel">
+      <select id="completedFilter">
+        <option value="">全部</option>
+        <option value="false">未完成</option>
+        <option value="true">已完成</option>
+      </select>
+
+      <select id="pageSizeSelect">
+        <option value="5">每页 5 条</option>
+        <option value="10" selected>每页 10 条</option>
+        <option value="20">每页 20 条</option>
+      </select>
+
+      <button id="prevPageBtn">上一页</button>
+      <span id="pageInfo">第 1 页</span>
+      <button id="nextPageBtn">下一页</button>
+    </section>
+
     <section id="todoList" class="todo-list"></section>
   </main>
 
