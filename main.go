@@ -11,7 +11,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-// 业务模型，包含后端自己处理业务需要的信息，可以用于前端，也可以用于数据库
+// 任务业务模型，包含后端自己处理业务需要的信息，可以用于前端，也可以用于数据库
 type Todo struct {
 	ID          int64
 	Title       string
@@ -19,16 +19,6 @@ type Todo struct {
 	Completed   bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-}
-
-// 响应模型，就是data里应该包着返回给前端的模型，通常是由业务模型转换来的
-type TodoResponse struct {
-	ID          int64     `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Completed   bool      `json:"completed"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // 创建请求体
@@ -60,6 +50,25 @@ type APIResponse struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    any    `json:"data"`
+}
+
+// 任务响应模型，就是data里应该包着返回给前端的模型，通常是由业务模型转换来的
+type TodoResponse struct {
+	ID          int64     `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Completed   bool      `json:"completed"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// 列表响应体
+type TodoListResponse struct {
+	Items      []TodoResponse `json:"items"`
+	Page       int            `json:"page"`
+	PageSize   int            `json:"page_size"`
+	Total      int64          `json:"total"`
+	TotalPages int            `json:"total_pages"`
 }
 
 // 数据库连接对象，只是一个入口
@@ -199,6 +208,26 @@ func listTodos(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "completed 只能是 true 或 false")
 		return
 	}
+
+	//查询总数
+	where := ""
+	whereArgs := make([]any, 0)
+
+	if req.Completed != "" {
+		completed := req.Completed == "true"
+		where = " WHERE completed = ?"
+		whereArgs = append(whereArgs, completed)
+	}
+	// 拼接查询总数的 SQL 语句
+	countQuery := "SELECT COUNT(*) FROM todos" + where
+	var total int64
+	// 执行查询总数的 SQL 语句，并将结果扫描到 total 变量中
+	if err := db.QueryRow(countQuery, whereArgs...).Scan(&total); err != nil {
+		fail(c, http.StatusInternalServerError, "查询任务总数失败")
+		return
+	}
+	totalPages := int((total + int64(req.PageSize) - 1) / int64(req.PageSize))
+
 	//计算偏移量
 	offset := (req.Page - 1) * req.PageSize
 	//拼接上半
@@ -223,9 +252,8 @@ func listTodos(c *gin.Context) {
 	`
 	// 收集所有参数
 	args = append(args, req.PageSize, offset)
-	// 使用参数和拼接好的SQL语句查询数据库
+	// 使用参数和拼接好的SQL语句查询数据库，需要用args...来解包切片
 	rows, err := db.Query(query, args...)
-
 	if err != nil {
 		fail(c, http.StatusInternalServerError, "查询任务列表失败")
 		return
@@ -262,12 +290,18 @@ func listTodos(c *gin.Context) {
 	}
 
 	//创建一个响应模型切片来返回给前端
-	resp := make([]TodoResponse, 0, len(todos))
+	items := make([]TodoResponse, 0, len(todos))
 	for _, todo := range todos {
-		resp = append(resp, toTodoResponse(todo))
+		items = append(items, toTodoResponse(todo))
 	}
-
-	success(c, resp)
+	//手动封装响应体，返回给前端
+	success(c, TodoListResponse{
+		Items:      items,
+		Page:       req.Page,
+		PageSize:   req.PageSize,
+		Total:      total,
+		TotalPages: totalPages,
+	})
 }
 
 // 更新任务函数

@@ -75,22 +75,35 @@ function buildListUrl() {
 
 async function loadTodos() {
   try {
-    const todos = await request(buildListUrl());
-    renderTodos(todos || []);
-    updatePager(todos || []);
+    const pageData = await request(buildListUrl());
+
+    // 如果当前页超过总页数，比如删除了最后一页最后一条数据，就回到最后一页
+    if (pageData.total_pages > 0 && currentPage > pageData.total_pages) {
+      currentPage = pageData.total_pages;
+      await loadTodos();
+      return;
+    }
+
+    // 如果没有任何数据，保持在第 1 页
+    if (pageData.total_pages === 0) {
+      currentPage = 1;
+    }
+
+    renderTodos(pageData.items || []);
+    updatePager(pageData);
   } catch (err) {
     alert(err.message);
   }
 }
 
-function updatePager(todos) {
-  pageInfo.textContent = `第 ${currentPage} 页`;
+function updatePager(pageData) {
+  const totalPages = pageData.total_pages;
+  const displayTotalPages = Math.max(totalPages, 1);
+
+  pageInfo.textContent = `第 ${currentPage} / ${displayTotalPages} 页，共 ${pageData.total} 条`;
 
   prevPageBtn.disabled = currentPage <= 1;
-
-  // 后端暂时没有返回 total，所以这里只能粗略判断：
-  // 如果当前页数量少于 pageSize，就认为后面没有下一页。
-  nextPageBtn.disabled = todos.length < pageSize;
+  nextPageBtn.disabled = totalPages === 0 || currentPage >= totalPages;
 }
 
 async function createTodo() {
@@ -114,7 +127,7 @@ async function createTodo() {
     titleInput.value = "";
     descInput.value = "";
 
-    // 新任务按 created_at 倒序排，创建后回到第一页更合理
+    // 新任务按 created_at 倒序排，创建后回到第一页
     currentPage = 1;
     await loadTodos();
   } catch (err) {
