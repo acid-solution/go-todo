@@ -14,7 +14,7 @@ import (
 
 // 任务业务模型，包含后端自己处理业务需要的信息，可以用于前端，也可以用于数据库
 type Todo struct {
-	ID          int64     `gorm:"primaryKey;autoIncrement;type:bigint unsigned;column:id"`
+	ID          uint64    `gorm:"primaryKey;autoIncrement;type:bigint unsigned;column:id"`
 	Title       string    `gorm:"type:varchar(255);not null;column:title"`
 	Description string    `gorm:"type:varchar(1000);not null;default:'';column:description"`
 	Completed   bool      `gorm:"not null;default:false;column:completed"`
