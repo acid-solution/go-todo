@@ -8,17 +8,23 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/go-sql-driver/mysql"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
 // 任务业务模型，包含后端自己处理业务需要的信息，可以用于前端，也可以用于数据库
 type Todo struct {
-	ID          int64
-	Title       string
-	Description string
-	Completed   bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          int64     `gorm:"primaryKey;autoIncrement;type:bigint unsigned;column:id"`
+	Title       string    `gorm:"type:varchar(255);not null;column:title"`
+	Description string    `gorm:"type:varchar(1000);not null;default:'';column:description"`
+	Completed   bool      `gorm:"not null;default:false;column:completed"`
+	CreatedAt   time.Time `gorm:"column:created_at"`
+	UpdatedAt   time.Time `gorm:"column:updated_at"`
+}
+
+// GORM默认会把结构体名的复数形式作为表名，也可以手动指定表名为todos
+func (Todo) TableName() string {
+	return "todos"
 }
 
 // 创建请求体
@@ -54,7 +60,7 @@ type APIResponse struct {
 
 // 任务响应模型，就是data里应该包着返回给前端的模型，通常是由业务模型转换来的
 type TodoResponse struct {
-	ID          int64     `json:"id"`
+	ID          uint64    `json:"id"`
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Completed   bool      `json:"completed"`
@@ -73,22 +79,31 @@ type TodoListResponse struct {
 
 // 数据库连接对象，只是一个入口
 var db *sql.DB
+var gormDB *gorm.DB
 
 // 初始化数据库连接
-func initDB() *sql.DB {
-	//初始化dsn
+func initDB() (*sql.DB, *gorm.DB) {
 	dsn := "root:root123@tcp(127.0.0.1:3306)/go_todo?charset=utf8mb4&parseTime=True&loc=Local"
-	//连接数据库
-	database, err := sql.Open("mysql", dsn)
+
+	gdb, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal(err)
-	}
-	//测试数据库连接是否成功
-	if err := database.Ping(); err != nil {
-		log.Fatal(err)
+		log.Fatal("连接 MySQL 失败:", err)
 	}
 
-	return database
+	if err := gdb.AutoMigrate(&Todo{}); err != nil {
+		log.Fatal("AutoMigrate 失败:", err)
+	}
+
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		log.Fatal("获取底层 sql.DB 失败:", err)
+	}
+
+	if err := sqlDB.Ping(); err != nil {
+		log.Fatal("Ping MySQL 失败:", err)
+	}
+
+	return sqlDB, gdb
 }
 
 // 响应辅助函数
@@ -439,7 +454,7 @@ func deleteTodo(c *gin.Context) {
 }
 
 func main() {
-	db = initDB()
+	db, gormDB = initDB()
 	defer db.Close()
 
 	r := gin.Default()
