@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"errors"
 	"log"
 	"net/http"
@@ -78,11 +77,10 @@ type TodoListResponse struct {
 }
 
 // 数据库连接对象，只是一个入口
-var db *sql.DB
 var gormDB *gorm.DB
 
 // 初始化数据库连接
-func initDB() (*sql.DB, *gorm.DB) {
+func initDB() *gorm.DB {
 	dsn := "root:root123@tcp(127.0.0.1:3306)/go_todo?charset=utf8mb4&parseTime=True&loc=Local"
 
 	gdb, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
@@ -103,7 +101,7 @@ func initDB() (*sql.DB, *gorm.DB) {
 		log.Fatal("Ping MySQL 失败:", err)
 	}
 
-	return sqlDB, gdb
+	return gdb
 }
 
 // 响应辅助函数
@@ -137,22 +135,8 @@ func toTodoResponse(todo *Todo) TodoResponse {
 // 根据ID从数据库中获取任务
 func getTodoByID(id int64) (*Todo, error) {
 	var todo Todo
-
-	err := db.QueryRow(
-		`SELECT id, title, description, completed, created_at, updated_at
-		 FROM todos
-		 WHERE id = ?`,
-		id,
-	).Scan(
-		&todo.ID,
-		&todo.Title,
-		&todo.Description,
-		&todo.Completed,
-		&todo.CreatedAt,
-		&todo.UpdatedAt,
-	)
-
-	if err != nil {
+	//返回按主键查到的第一条数据，如果没有查到会返回ErrRecordNotFound错误
+	if err := gormDB.First(&todo, id).Error; err != nil {
 		return nil, err
 	}
 
@@ -163,153 +147,91 @@ func getTodoByID(id int64) (*Todo, error) {
 func createTodo(c *gin.Context) {
 	var req CreateTodoRequest
 
-	//从前端请求中绑定请求体数据并进行错误处理
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "任务名称不能为空")
 		return
 	}
-	//把数据插入数据库
-	result, err := db.Exec(
-		"INSERT INTO todos (title, description) VALUES (?, ?)",
-		req.Title,
-		req.Description,
-	)
-	//如果插入失败，返回错误信息
-	if err != nil {
+	// 创建一个新的任务实例，并将请求体中的标题和描述赋值给它
+	todo := Todo{
+		Title:       req.Title,
+		Description: req.Description,
+	}
+	// 使用 GORM 的 Create 方法将任务保存到数据库中，并检查是否有错误发生，GORM在创建后会自动填充ID和时间戳，不用再查一次了
+	if err := gormDB.Create(&todo).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "创建任务失败")
 		return
 	}
-	//获取插入数据的ID
-	id, err := result.LastInsertId()
-	if err != nil {
-		fail(c, http.StatusInternalServerError, "获取任务 ID 失败")
-		return
-	}
-	//根据ID查询新建的任务
-	todo, err := getTodoByID(id)
-	if err != nil {
-		fail(c, http.StatusInternalServerError, "查询新建任务失败")
-		return
-	}
-	//返回响应模型
-	success(c, toTodoResponse(todo))
+
+	success(c, toTodoResponse(&todo))
 }
 
 // 列表返回函数
 func listTodos(c *gin.Context) {
 	var req ListTodoRequest
-	//从前端请求中绑定查询参数
+	// 绑定查询参数到请求体结构体
 	if err := c.ShouldBindQuery(&req); err != nil {
 		fail(c, http.StatusBadRequest, "查询参数无效")
 		return
 	}
-	//如果没有传入分页参数，设置默认值
+	// 设置默认值
 	if req.Page == 0 {
 		req.Page = 1
 	}
+
 	if req.PageSize == 0 {
 		req.PageSize = 10
 	}
-	//校验参数是否合法
+	// 参数校验
 	if req.Page < 1 {
 		fail(c, http.StatusBadRequest, "page 必须大于等于 1")
 		return
 	}
+
 	if req.PageSize < 1 || req.PageSize > 100 {
 		fail(c, http.StatusBadRequest, "page_size 必须在 1 到 100 之间")
 		return
 	}
+
 	if req.Completed != "" && req.Completed != "true" && req.Completed != "false" {
 		fail(c, http.StatusBadRequest, "completed 只能是 true 或 false")
 		return
 	}
+	// 定义一个函数来决定是否需要应用过滤条件
+	// 这个函数接受一个 GORM 查询对象，并根据请求体中的 completed 参数来应用过滤条件
+	applyFilters := func(query *gorm.DB) *gorm.DB {
+		if req.Completed != "" {
+			completed := req.Completed == "true"
+			query = query.Where("completed = ?", completed)
+		}
 
-	//查询总数
-	where := ""
-	whereArgs := make([]any, 0)
-
-	if req.Completed != "" {
-		completed := req.Completed == "true"
-		where = " WHERE completed = ?"
-		whereArgs = append(whereArgs, completed)
+		return query
 	}
-	// 拼接查询总数的 SQL 语句
-	countQuery := "SELECT COUNT(*) FROM todos" + where
+	// 查询任务总数
 	var total int64
-	// 执行查询总数的 SQL 语句，并将结果扫描到 total 变量中
-	if err := db.QueryRow(countQuery, whereArgs...).Scan(&total); err != nil {
+	if err := applyFilters(gormDB.Model(&Todo{})).Count(&total).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "查询任务总数失败")
 		return
 	}
+	// 计算总页数和偏移量
 	totalPages := int((total + int64(req.PageSize) - 1) / int64(req.PageSize))
-
-	//计算偏移量
 	offset := (req.Page - 1) * req.PageSize
-	//拼接上半
-	query := `
-		SELECT id, title, description, completed, created_at, updated_at
-		FROM todos
-	`
-	// 创建一个切片来存储查询参数
-	args := make([]any, 0)
-	// 如果传入了 completed 参数，则添加 WHERE 子句和查询参数
-	if req.Completed != "" {
-		completed := req.Completed == "true"
-		query += `
-			WHERE completed = ?
-		`
-		args = append(args, completed)
-	}
-	// 拼接下半
-	query += `
-		ORDER BY created_at DESC, id DESC
-		LIMIT ? OFFSET ?
-	`
-	// 收集所有参数
-	args = append(args, req.PageSize, offset)
-	// 使用参数和拼接好的SQL语句查询数据库，需要用args...来解包切片
-	rows, err := db.Query(query, args...)
-	if err != nil {
+	// 查询当前页任务列表
+	var todos []Todo
+	if err := applyFilters(gormDB.Model(&Todo{})).
+		Order("created_at DESC").
+		Order("id DESC").
+		Limit(req.PageSize).
+		Offset(offset).
+		Find(&todos).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "查询任务列表失败")
 		return
 	}
-	//rows是一个迭代器，是从数据库一条一条读取数据的，所以要记得关闭
-	defer rows.Close()
-
-	//创建一个业务模型切片来存储任务列表
-	todos := make([]*Todo, 0)
-	//用rows.Next()迭代器来遍历查询结结果集
-	for rows.Next() {
-		var todo Todo
-		//用rows.Scan()来把查询结果集的每一行数据扫描到业务模型中
-		err := rows.Scan(
-			&todo.ID,
-			&todo.Title,
-			&todo.Description,
-			&todo.Completed,
-			&todo.CreatedAt,
-			&todo.UpdatedAt,
-		)
-		//如果扫描失败，返回错误信息
-		if err != nil {
-			fail(c, http.StatusInternalServerError, "解析任务列表失败")
-			return
-		}
-		//把业务模型添加到切片中
-		todos = append(todos, &todo)
-	}
-	//检查迭代器是否有报错，迭代器报错是有没有正确完成迭代，任务错误在内部的scan就处理了
-	if err := rows.Err(); err != nil {
-		fail(c, http.StatusInternalServerError, "读取任务列表失败")
-		return
-	}
-
-	//创建一个响应模型切片来返回给前端
+	// 将业务模型转换为响应模型
 	items := make([]TodoResponse, 0, len(todos))
-	for _, todo := range todos {
-		items = append(items, toTodoResponse(todo))
+	for i := range todos {
+		items = append(items, toTodoResponse(&todos[i]))
 	}
-	//手动封装响应体，返回给前端
+	// 手动封装响应返回
 	success(c, TodoListResponse{
 		Items:      items,
 		Page:       req.Page,
@@ -322,7 +244,6 @@ func listTodos(c *gin.Context) {
 // 更新任务函数
 func updateTodo(c *gin.Context) {
 	var idReq TodoIDRequest
-
 	// 获取路径参数 id
 	if err := c.ShouldBindUri(&idReq); err != nil {
 		fail(c, http.StatusBadRequest, "无效的任务 ID")
@@ -330,39 +251,29 @@ func updateTodo(c *gin.Context) {
 	}
 
 	var req UpdateTodoRequest
-
-	// 获取任务名称和任务描述
+	// 绑定请求体 JSON 数据到 req 结构体
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "任务名称不能为空")
 		return
 	}
+	//Updates更新多个字段，传入一个map[string]interface{}，key是字段名，value是要更新的值
+	result := gormDB.
+		Model(&Todo{}).
+		Where("id = ?", idReq.ID).
+		Updates(map[string]any{
+			"title":       req.Title,
+			"description": req.Description,
+		})
 
-	// 更新数据库
-	result, err := db.Exec(
-		`UPDATE todos
-		 SET title = ?, description = ?
-		 WHERE id = ?`,
-		req.Title,
-		req.Description,
-		idReq.ID,
-	)
-	if err != nil {
+	if result.Error != nil {
 		fail(c, http.StatusInternalServerError, "更新任务失败")
 		return
 	}
 
-	// 表示刚才的更新更新了多少行
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		fail(c, http.StatusInternalServerError, "获取更新结果失败")
-		return
-	}
-	// 如果没有更新任何行，说明任务不存在，返回404
-	if rowsAffected == 0 {
+	if result.RowsAffected == 0 {
 		fail(c, http.StatusNotFound, "任务不存在")
 		return
 	}
-
 	// 查询更新后的最新任务
 	todo, err := getTodoByID(idReq.ID)
 	if err != nil {
@@ -376,17 +287,15 @@ func updateTodo(c *gin.Context) {
 // 标记完成函数
 func completeTodo(c *gin.Context) {
 	var idReq TodoIDRequest
-
 	// 获取路径参数 id
 	if err := c.ShouldBindUri(&idReq); err != nil {
 		fail(c, http.StatusBadRequest, "无效的任务 ID")
 		return
 	}
-
-	// 先查询任务是否存在
+	// 查询任务是否存在
 	_, err := getTodoByID(idReq.ID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			fail(c, http.StatusNotFound, "任务不存在")
 			return
 		}
@@ -394,20 +303,15 @@ func completeTodo(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "查询任务失败")
 		return
 	}
-
-	// 更新数据库，将任务标记为已完成
-	_, err = db.Exec(
-		`UPDATE todos
-		 SET completed = 1
-		 WHERE id = ?`,
-		idReq.ID,
-	)
-	if err != nil {
+	// Update方法更新单个字段，传入字段名和要更新的值
+	if err := gormDB.
+		Model(&Todo{}).
+		Where("id = ?", idReq.ID).
+		Update("completed", true).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "标记任务完成失败")
 		return
 	}
 
-	// 查询更新后的最新任务
 	todo, err := getTodoByID(idReq.ID)
 	if err != nil {
 		fail(c, http.StatusInternalServerError, "查询更新后的任务失败")
@@ -420,33 +324,25 @@ func completeTodo(c *gin.Context) {
 // 删除任务函数
 func deleteTodo(c *gin.Context) {
 	var idReq TodoIDRequest
-
 	// 获取路径参数 id
 	if err := c.ShouldBindUri(&idReq); err != nil {
 		fail(c, http.StatusBadRequest, "无效的任务 ID")
 		return
 	}
-
-	// 删除数据库中的任务
-	result, err := db.Exec(
-		`DELETE FROM todos
-		 WHERE id = ?`,
-		idReq.ID,
-	)
+	// 查询任务是否存在
+	_, err := getTodoByID(idReq.ID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			fail(c, http.StatusNotFound, "任务不存在")
+			return
+		}
+
+		fail(c, http.StatusInternalServerError, "查询任务失败")
+		return
+	}
+	// Delete方法按主键删除记录，传入要删除的模型和主键值
+	if err := gormDB.Delete(&Todo{}, idReq.ID).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "删除任务失败")
-		return
-	}
-
-	// 判断是否真的删除了数据
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		fail(c, http.StatusInternalServerError, "获取删除结果失败")
-		return
-	}
-
-	if rowsAffected == 0 {
-		fail(c, http.StatusNotFound, "任务不存在")
 		return
 	}
 
@@ -454,8 +350,7 @@ func deleteTodo(c *gin.Context) {
 }
 
 func main() {
-	db, gormDB = initDB()
-	defer db.Close()
+	gormDB = initDB()
 
 	r := gin.Default()
 	//用于向访问方开放文件
