@@ -4,9 +4,11 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -76,13 +78,40 @@ type TodoListResponse struct {
 	TotalPages int            `json:"total_pages"`
 }
 
+type Config struct {
+	Port     string
+	MySQLDSN string
+}
+
+func loadConfig() Config {
+	_ = godotenv.Load()
+
+	cfg := Config{
+		Port:     getEnv("PORT", "8081"),
+		MySQLDSN: getEnv("MYSQL_DSN", ""),
+	}
+
+	if cfg.MySQLDSN == "" {
+		log.Fatal("MYSQL_DSN 未设置")
+	}
+
+	return cfg
+}
+
+func getEnv(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	return value
+}
+
 // 数据库连接对象，只是一个入口
 var gormDB *gorm.DB
 
 // 初始化数据库连接
-func initDB() *gorm.DB {
-	dsn := "root:root123@tcp(127.0.0.1:3306)/go_todo?charset=utf8mb4&parseTime=True&loc=Local"
-
+func initDB(dsn string) *gorm.DB {
 	gdb, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("连接 MySQL 失败:", err)
@@ -350,7 +379,8 @@ func deleteTodo(c *gin.Context) {
 }
 
 func main() {
-	gormDB = initDB()
+	cfg := loadConfig()
+	gormDB = initDB(cfg.MySQLDSN)
 
 	r := gin.Default()
 	//用于向访问方开放文件
@@ -366,5 +396,7 @@ func main() {
 	r.PATCH("/api/todos/:id/done", completeTodo)
 	r.DELETE("/api/todos/:id", deleteTodo)
 
-	r.Run(":8081")
+	if err := r.Run(":" + cfg.Port); err != nil {
+		log.Fatal("启动服务失败:", err)
+	}
 }
