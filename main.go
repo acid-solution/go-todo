@@ -3,11 +3,13 @@ package main
 import (
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -109,6 +111,7 @@ func getEnv(key, defaultValue string) string {
 
 // 数据库连接对象，只是一个入口
 var gormDB *gorm.DB
+var logger *slog.Logger
 
 // 初始化数据库连接
 func initDB(dsn string) *gorm.DB {
@@ -131,6 +134,73 @@ func initDB(dsn string) *gorm.DB {
 	}
 
 	return gdb
+}
+
+func initLogger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+}
+
+const requestIDKey = "request_id"
+
+// 生成request_id中间件，给每个请求生成一个唯一的request_id，并将其设置到请求上下文中，方便后续日志记录和追踪
+func requestIDMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 从请求头中获取 request_id，如果没有则生成一个新的 UUID
+		requestID := c.GetHeader("X-Request-ID")
+		if requestID == "" {
+			requestID = uuid.NewString()
+		}
+		// 将 request_id 设置到请求上下文中，方便后续处理使用
+		c.Set(requestIDKey, requestID)
+		// 将 request_id 设置到响应头中，方便客户端获取
+		c.Header("X-Request-ID", requestID)
+		//纯前置中间件其实不需要调用c.Next()，但是为了保证中间件链的完整性，还是调用一下
+		c.Next()
+	}
+}
+
+// 日志记录中间件，记录每个请求的详细信息，包括请求方法、路径、状态码、耗时、客户端 IP 等
+func requestLoggerMiddleware(logger *slog.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 记录请求开始时间
+		start := time.Now()
+		// 调用下一个中间件或处理函数，继续处理请求
+		c.Next()
+		// 其他中间件或处理函数执行完毕后
+		// 记录请求结束时间
+		latency := time.Since(start)
+		// 获取响应状态码
+		status := c.Writer.Status()
+		// 从请求上下文中获取 request_id
+		requestID := c.GetString(requestIDKey)
+		//用键值对切片记录请求信息，方便后续日志记录和追踪
+		attrs := []any{
+			"request_id", requestID,
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"status", status,
+			"latency", latency.String(),
+			"client_ip", c.ClientIP(),
+		}
+		// 如果请求处理过程中有错误发生，则将错误信息添加到日志属性中
+		if len(c.Errors) > 0 {
+			attrs = append(attrs, "errors", c.Errors.String())
+		}
+		// 根据响应状态码的不同，记录不同级别的日志信息
+		switch {
+		case status >= http.StatusInternalServerError:
+			// 500以上的状态码都算错误
+			logger.Error("request completed", attrs...)
+		case status >= http.StatusBadRequest:
+			// 400-499的状态码都算警告
+			logger.Warn("request completed", attrs...)
+		default:
+			// 200-399的状态码都算成功
+			logger.Info("request completed", attrs...)
+		}
+	}
 }
 
 // 响应辅助函数
@@ -379,10 +449,16 @@ func deleteTodo(c *gin.Context) {
 }
 
 func main() {
+	logger = initLogger()
 	cfg := loadConfig()
 	gormDB = initDB(cfg.MySQLDSN)
 
-	r := gin.Default()
+	r := gin.New()
+
+	r.Use(requestIDMiddleware())
+	r.Use(requestLoggerMiddleware(logger))
+	r.Use(gin.Recovery())
+
 	//用于向访问方开放文件
 	r.Static("/static", "./static")
 	//访问根目录的时候返回该文件
