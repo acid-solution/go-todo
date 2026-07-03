@@ -277,7 +277,7 @@ func createTodo(c *gin.Context) {
 	}
 	// 使用 GORM 的 Create 方法将任务保存到数据库中，并检查是否有错误发生，GORM在创建后会自动填充ID和时间戳，不用再查一次了
 	if err := gormDB.Create(&todo).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "创建任务失败")
+		failInternalError(c, "创建任务失败")
 		return
 	}
 
@@ -289,7 +289,7 @@ func listTodos(c *gin.Context) {
 	var req ListTodoRequest
 	// 绑定查询参数到请求体结构体
 	if err := c.ShouldBindQuery(&req); err != nil {
-		fail(c, http.StatusBadRequest, "查询参数无效")
+		failInvalidArgument(c, "查询参数无效")
 		return
 	}
 	// 设置默认值
@@ -302,17 +302,17 @@ func listTodos(c *gin.Context) {
 	}
 	// 参数校验
 	if req.Page < 1 {
-		fail(c, http.StatusBadRequest, "page 必须大于等于 1")
+		failInvalidArgument(c, "page 必须大于等于 1")
 		return
 	}
 
 	if req.PageSize < 1 || req.PageSize > 100 {
-		fail(c, http.StatusBadRequest, "page_size 必须在 1 到 100 之间")
+		failInvalidArgument(c, "page_size 必须在 1 到 100 之间")
 		return
 	}
 
 	if req.Completed != "" && req.Completed != "true" && req.Completed != "false" {
-		fail(c, http.StatusBadRequest, "completed 只能是 true 或 false")
+		failInvalidArgument(c, "completed 只能是 true 或 false")
 		return
 	}
 	// 定义一个函数来决定是否需要应用过滤条件
@@ -328,7 +328,7 @@ func listTodos(c *gin.Context) {
 	// 查询任务总数
 	var total int64
 	if err := applyFilters(gormDB.Model(&Todo{})).Count(&total).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询任务总数失败")
+		failInternalError(c, "查询任务总数失败")
 		return
 	}
 	// 计算总页数和偏移量
@@ -342,7 +342,7 @@ func listTodos(c *gin.Context) {
 		Limit(req.PageSize).
 		Offset(offset).
 		Find(&todos).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询任务列表失败")
+		failInternalError(c, "查询任务列表失败")
 		return
 	}
 	// 将业务模型转换为响应模型
@@ -385,18 +385,18 @@ func updateTodo(c *gin.Context) {
 		})
 
 	if result.Error != nil {
-		fail(c, http.StatusInternalServerError, "更新任务失败")
+		failInternalError(c, "更新任务失败")
 		return
 	}
 
 	if result.RowsAffected == 0 {
-		fail(c, http.StatusNotFound, "任务不存在")
+		failNotFound(c, "任务不存在")
 		return
 	}
 	// 查询更新后的最新任务
 	todo, err := getTodoByID(idReq.ID)
 	if err != nil {
-		fail(c, http.StatusInternalServerError, "查询更新后的任务失败")
+		failInternalError(c, "查询更新后的任务失败")
 		return
 	}
 
@@ -415,11 +415,11 @@ func completeTodo(c *gin.Context) {
 	_, err := getTodoByID(idReq.ID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			fail(c, http.StatusNotFound, "任务不存在")
+			failNotFound(c, "任务不存在")
 			return
 		}
 
-		fail(c, http.StatusInternalServerError, "查询任务失败")
+		failInternalError(c, "查询任务失败")
 		return
 	}
 	// Update方法更新单个字段，传入字段名和要更新的值
@@ -427,13 +427,13 @@ func completeTodo(c *gin.Context) {
 		Model(&Todo{}).
 		Where("id = ?", idReq.ID).
 		Update("completed", true).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "标记任务完成失败")
+		failInternalError(c, "标记任务完成失败")
 		return
 	}
 
 	todo, err := getTodoByID(idReq.ID)
 	if err != nil {
-		fail(c, http.StatusInternalServerError, "查询更新后的任务失败")
+		failInternalError(c, "查询更新后的任务失败")
 		return
 	}
 
@@ -452,16 +452,16 @@ func deleteTodo(c *gin.Context) {
 	_, err := getTodoByID(idReq.ID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			fail(c, http.StatusNotFound, "任务不存在")
+			failNotFound(c, "任务不存在")
 			return
 		}
 
-		fail(c, http.StatusInternalServerError, "查询任务失败")
+		failInternalError(c, "查询任务失败")
 		return
 	}
 	// Delete方法按主键删除记录，传入要删除的模型和主键值
 	if err := gormDB.Delete(&Todo{}, idReq.ID).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "删除任务失败")
+		failInternalError(c, "删除任务失败")
 		return
 	}
 
