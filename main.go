@@ -61,6 +61,13 @@ type APIResponse struct {
 	Data    any    `json:"data"`
 }
 
+const (
+	CodeOK              = 0
+	CodeInvalidArgument = 10001
+	CodeNotFound        = 10002
+	CodeInternalError   = 20001
+)
+
 // 任务响应模型，就是data里应该包着返回给前端的模型，通常是由业务模型转换来的
 type TodoResponse struct {
 	ID          uint64    `json:"id"`
@@ -204,19 +211,32 @@ func requestLoggerMiddleware(logger *slog.Logger) gin.HandlerFunc {
 }
 
 // 响应辅助函数
-func success(c *gin.Context, data any) {
+func success(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusOK, APIResponse{
-		Code:    0,
-		Message: "ok",
+		Code:    CodeOK,
+		Message: "success",
 		Data:    data,
 	})
 }
-func fail(c *gin.Context, status int, message string) {
+
+func fail(c *gin.Context, status int, code int, message string) {
 	c.JSON(status, APIResponse{
-		Code:    status,
+		Code:    code,
 		Message: message,
 		Data:    nil,
 	})
+}
+
+func failInvalidArgument(c *gin.Context, message string) {
+	fail(c, http.StatusBadRequest, CodeInvalidArgument, message)
+}
+
+func failNotFound(c *gin.Context, message string) {
+	fail(c, http.StatusNotFound, CodeNotFound, message)
+}
+
+func failInternalError(c *gin.Context, message string) {
+	fail(c, http.StatusInternalServerError, CodeInternalError, message)
 }
 
 // 业务模型转换响应模型
@@ -247,7 +267,7 @@ func createTodo(c *gin.Context) {
 	var req CreateTodoRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "任务名称不能为空")
+		failInvalidArgument(c, "任务名称不能为空")
 		return
 	}
 	// 创建一个新的任务实例，并将请求体中的标题和描述赋值给它
@@ -345,14 +365,14 @@ func updateTodo(c *gin.Context) {
 	var idReq TodoIDRequest
 	// 获取路径参数 id
 	if err := c.ShouldBindUri(&idReq); err != nil {
-		fail(c, http.StatusBadRequest, "无效的任务 ID")
+		failInvalidArgument(c, "无效的任务 ID")
 		return
 	}
 
 	var req UpdateTodoRequest
 	// 绑定请求体 JSON 数据到 req 结构体
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "任务名称不能为空")
+		failInvalidArgument(c, "任务名称不能为空")
 		return
 	}
 	//Updates更新多个字段，传入一个map[string]interface{}，key是字段名，value是要更新的值
@@ -388,7 +408,7 @@ func completeTodo(c *gin.Context) {
 	var idReq TodoIDRequest
 	// 获取路径参数 id
 	if err := c.ShouldBindUri(&idReq); err != nil {
-		fail(c, http.StatusBadRequest, "无效的任务 ID")
+		failInvalidArgument(c, "无效的任务 ID")
 		return
 	}
 	// 查询任务是否存在
@@ -425,7 +445,7 @@ func deleteTodo(c *gin.Context) {
 	var idReq TodoIDRequest
 	// 获取路径参数 id
 	if err := c.ShouldBindUri(&idReq); err != nil {
-		fail(c, http.StatusBadRequest, "无效的任务 ID")
+		failInvalidArgument(c, "无效的任务 ID")
 		return
 	}
 	// 查询任务是否存在
