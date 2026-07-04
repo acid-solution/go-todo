@@ -4,6 +4,8 @@ import (
 	"errors"
 	"go-todo/internal/model"
 	"go-todo/internal/repository"
+
+	"gorm.io/gorm"
 )
 
 var ErrTodoNotFound = errors.New("todo not found")
@@ -61,7 +63,16 @@ func (s *TodoService) CreateTodo(input CreateTodoInput) (*model.Todo, error) {
 
 // 根据ID获取任务
 func (s *TodoService) GetTodoByID(id int64) (*model.Todo, error) {
-	return s.repo.GetByID(id)
+	todo, err := s.repo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTodoNotFound
+		}
+
+		return nil, err
+	}
+
+	return todo, nil
 }
 
 // 根据条件查询任务列表
