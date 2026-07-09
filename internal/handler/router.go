@@ -2,9 +2,12 @@ package handler
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(r *gin.Engine, todoHandler *TodoHandler) {
+func RegisterRoutes(r *gin.Engine, todoHandler *TodoHandler, userHandler *UserHandler) {
 	r.Static("/static", "./static")
 	r.StaticFile("/", "./static/index.html")
+
+	r.POST("/api/register", userHandler.Register)
+	r.POST("/api/login", userHandler.Login)
 
 	r.POST("/api/todos", todoHandler.CreateTodo)
 	r.GET("/api/todos", todoHandler.ListTodos)

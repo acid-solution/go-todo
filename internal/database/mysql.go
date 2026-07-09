@@ -15,7 +15,7 @@ func InitMySQL(dsn string) *gorm.DB {
 		log.Fatal("连接 MySQL 失败:", err)
 	}
 
-	if err := db.AutoMigrate(&model.Todo{}); err != nil {
+	if err := db.AutoMigrate(&model.Todo{}, &model.User{}); err != nil {
 		log.Fatal("AutoMigrate 失败:", err)
 	}
 

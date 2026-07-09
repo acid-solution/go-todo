@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// 任务业务模型，包含后端自己处理业务需要的信息，可以用于前端，也可以用于数据库
+// 它被用作业务模型，但实际上已经混入了数据库模型的职责,毕竟要用aotomigrate创建表结构,所以这里的模型是数据库模型,也可以叫做数据库实体模型
 type Todo struct {
 	ID          uint64    `gorm:"primaryKey;autoIncrement;type:bigint unsigned;column:id"`
 	Title       string    `gorm:"type:varchar(255);not null;column:title"`
