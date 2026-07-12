@@ -30,7 +30,7 @@ type UpdateTodoRequest struct {
 }
 
 type TodoIDRequest struct {
-	ID int64 `uri:"id" binding:"required"`
+	ID int64 `uri:"id" binding:"required,gt=0"`
 }
 
 type ListTodoRequest struct {

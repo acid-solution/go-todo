@@ -35,6 +35,22 @@ func Load() Config {
 		log.Fatal("JWT_SECRET 未设置")
 	}
 
+	if len(cfg.JWTSecret) < 32 {
+		log.Fatal("JWT_SECRET 长度不能少于 32 字节")
+	}
+
+	if cfg.AccessTokenTTL <= 0 {
+		log.Fatal("ACCESS_TOKEN_TTL 必须大于 0")
+	}
+
+	if cfg.RefreshTokenTTL <= 0 {
+		log.Fatal("REFRESH_TOKEN_TTL 必须大于 0")
+	}
+
+	if cfg.RefreshTokenTTL <= cfg.AccessTokenTTL {
+		log.Fatal("REFRESH_TOKEN_TTL 必须大于 ACCESS_TOKEN_TTL")
+	}
+
 	return cfg
 }
 

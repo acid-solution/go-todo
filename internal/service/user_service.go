@@ -34,8 +34,11 @@ func NewUserService(
 	}
 }
 
-var ErrInvalidCredentials = errors.New("invalid credentials")
-var ErrInvalidSession = errors.New("invalid session")
+var (
+	ErrInvalidCredentials    = errors.New("invalid credentials")
+	ErrInvalidSession        = errors.New("invalid session")
+	ErrUsernameAlreadyExists = errors.New("username already exists")
+)
 
 // 注册需要什么
 type RegisterInput struct {
@@ -84,6 +87,10 @@ func (s *UserService) Register(input RegisterInput) (*model.User, error) {
 	}
 	// 3. 保存用户到数据库
 	if err := s.userRepo.Create(&user); err != nil {
+		if errors.Is(err, repository.ErrUsernameAlreadyExists) {
+			return nil, ErrUsernameAlreadyExists
+		}
+
 		return nil, err
 	}
 

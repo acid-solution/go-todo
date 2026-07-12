@@ -1,8 +1,10 @@
 package repository
 
 import (
+	"errors"
 	"go-todo/internal/model"
 
+	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -18,9 +20,21 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 	}
 }
 
+var ErrUsernameAlreadyExists = errors.New("username already exists")
+
 // Create 创建新用户。
 func (r *UserRepository) Create(user *model.User) error {
-	return r.db.Create(user).Error
+	err := r.db.Create(user).Error
+	if err == nil {
+		return nil
+	}
+
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+		return ErrUsernameAlreadyExists
+	}
+
+	return err
 }
 
 // GetByUsername 根据用户名查询用户。

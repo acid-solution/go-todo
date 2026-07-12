@@ -46,6 +46,10 @@ func main() {
 		cfg.RefreshTokenTTL,
 	)
 	userHandler := handler.NewUserHandler(userService) //handler依赖service
+	authMiddleware := middleware.Auth(
+		sessionRepo,
+		cfg.JWTSecret,
+	)
 
 	// 创建 Gin 引擎
 	r := gin.New()
@@ -59,7 +63,12 @@ func main() {
 	r.Use(gin.Recovery())
 
 	// 注册路由，将请求路径与处理函数进行映射
-	handler.RegisterRoutes(r, todoHandler, userHandler)
+	handler.RegisterRoutes(
+		r,
+		todoHandler,
+		userHandler,
+		authMiddleware, //因为是部分用到，所有不能像其他中间件一样放在外面
+	)
 
 	// 启动 HTTP 服务，监听指定端口
 	if err := r.Run(":" + cfg.Port); err != nil {

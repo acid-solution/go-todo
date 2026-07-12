@@ -52,6 +52,11 @@ func (h *UserHandler) Register(c *gin.Context) {
 		Password: req.Password,
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrUsernameAlreadyExists) {
+			response.FailConflict(c, "用户名已存在")
+			return
+		}
+
 		response.FailInternalError(c, "注册失败")
 		return
 	}
@@ -59,7 +64,6 @@ func (h *UserHandler) Register(c *gin.Context) {
 	response.Success(c, response.ToUserResponse(user))
 }
 
-// 登录用户
 // 登录用户
 func (h *UserHandler) Login(c *gin.Context) {
 	var req LoginRequest

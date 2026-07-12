@@ -133,18 +133,17 @@ func (s *TodoService) UpdateTodo(
 	id int64,
 	input UpdateTodoInput,
 ) (*model.Todo, error) {
-	rowsAffected, err := s.repo.Update(
+	if _, err := s.GetTodoByID(userID, id); err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.Update(
 		userID,
 		id,
 		input.Title,
 		input.Description,
-	)
-	if err != nil {
+	); err != nil {
 		return nil, err
-	}
-
-	if rowsAffected == 0 {
-		return nil, ErrTodoNotFound
 	}
 
 	return s.GetTodoByID(userID, id)

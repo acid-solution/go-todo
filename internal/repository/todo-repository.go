@@ -99,16 +99,15 @@ func (r *TodoRepository) Update(
 	id int64,
 	title string,
 	description string,
-) (int64, error) {
-	result := r.db.
+) error {
+	return r.db.
 		Model(&model.Todo{}).
 		Where("id = ? AND user_id = ?", id, userID).
 		Updates(map[string]any{
 			"title":       title,
 			"description": description,
-		})
-
-	return result.RowsAffected, result.Error
+		}).
+		Error
 }
 
 // 标记完成
