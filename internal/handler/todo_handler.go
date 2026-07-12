@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"go-todo/internal/middleware"
 	"go-todo/internal/response"
 	"go-todo/internal/service"
 
@@ -38,8 +39,29 @@ type ListTodoRequest struct {
 	Completed string `form:"completed"`
 }
 
+// 从上下文中获取经过身份验证的用户 ID
+func getAuthenticatedUserID(c *gin.Context) (uint64, bool) {
+	value, exists := c.Get(middleware.ContextUserIDKey)
+	if !exists {
+		return 0, false
+	}
+
+	userID, ok := value.(uint64)
+	if !ok || userID == 0 {
+		return 0, false
+	}
+
+	return userID, true
+}
+
 // CreateTodo 创建一个新的 Todo 任务
 func (h *TodoHandler) CreateTodo(c *gin.Context) {
+	userID, ok := getAuthenticatedUserID(c)
+	if !ok {
+		response.FailUnauthorized(c, "未登录或登录已过期")
+		return
+	}
+
 	var req CreateTodoRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -47,10 +69,13 @@ func (h *TodoHandler) CreateTodo(c *gin.Context) {
 		return
 	}
 
-	todo, err := h.service.CreateTodo(service.CreateTodoInput{
-		Title:       req.Title,
-		Description: req.Description,
-	})
+	todo, err := h.service.CreateTodo(
+		userID,
+		service.CreateTodoInput{
+			Title:       req.Title,
+			Description: req.Description,
+		},
+	)
 	if err != nil {
 		response.FailInternalError(c, "创建任务失败")
 		return
@@ -61,6 +86,12 @@ func (h *TodoHandler) CreateTodo(c *gin.Context) {
 
 // ListTodos 查询 Todo 任务列表
 func (h *TodoHandler) ListTodos(c *gin.Context) {
+	userID, ok := getAuthenticatedUserID(c)
+	if !ok {
+		response.FailUnauthorized(c, "未登录或登录已过期")
+		return
+	}
+
 	var req ListTodoRequest
 
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -91,11 +122,14 @@ func (h *TodoHandler) ListTodos(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.ListTodos(service.ListTodosInput{
-		Page:      req.Page,
-		PageSize:  req.PageSize,
-		Completed: req.Completed,
-	})
+	result, err := h.service.ListTodos(
+		userID,
+		service.ListTodosInput{
+			Page:      req.Page,
+			PageSize:  req.PageSize,
+			Completed: req.Completed,
+		},
+	)
 	if err != nil {
 		response.FailInternalError(c, "查询任务列表失败")
 		return
@@ -117,6 +151,12 @@ func (h *TodoHandler) ListTodos(c *gin.Context) {
 
 // UpdateTodo 更新任务
 func (h *TodoHandler) UpdateTodo(c *gin.Context) {
+	userID, ok := getAuthenticatedUserID(c)
+	if !ok {
+		response.FailUnauthorized(c, "未登录或登录已过期")
+		return
+	}
+
 	var idReq TodoIDRequest
 
 	if err := c.ShouldBindUri(&idReq); err != nil {
@@ -131,10 +171,14 @@ func (h *TodoHandler) UpdateTodo(c *gin.Context) {
 		return
 	}
 
-	todo, err := h.service.UpdateTodo(idReq.ID, service.UpdateTodoInput{
-		Title:       req.Title,
-		Description: req.Description,
-	})
+	todo, err := h.service.UpdateTodo(
+		userID,
+		idReq.ID,
+		service.UpdateTodoInput{
+			Title:       req.Title,
+			Description: req.Description,
+		},
+	)
 	if err != nil {
 		if errors.Is(err, service.ErrTodoNotFound) {
 			response.FailNotFound(c, "任务不存在")
@@ -150,6 +194,12 @@ func (h *TodoHandler) UpdateTodo(c *gin.Context) {
 
 // CompleteTodo 完成任务
 func (h *TodoHandler) CompleteTodo(c *gin.Context) {
+	userID, ok := getAuthenticatedUserID(c)
+	if !ok {
+		response.FailUnauthorized(c, "未登录或登录已过期")
+		return
+	}
+
 	var idReq TodoIDRequest
 
 	if err := c.ShouldBindUri(&idReq); err != nil {
@@ -157,7 +207,7 @@ func (h *TodoHandler) CompleteTodo(c *gin.Context) {
 		return
 	}
 
-	todo, err := h.service.CompleteTodo(idReq.ID)
+	todo, err := h.service.CompleteTodo(userID, idReq.ID)
 	if err != nil {
 		if errors.Is(err, service.ErrTodoNotFound) {
 			response.FailNotFound(c, "任务不存在")
@@ -173,6 +223,12 @@ func (h *TodoHandler) CompleteTodo(c *gin.Context) {
 
 // DeleteTodo 删除任务
 func (h *TodoHandler) DeleteTodo(c *gin.Context) {
+	userID, ok := getAuthenticatedUserID(c)
+	if !ok {
+		response.FailUnauthorized(c, "未登录或登录已过期")
+		return
+	}
+
 	var idReq TodoIDRequest
 
 	if err := c.ShouldBindUri(&idReq); err != nil {
@@ -180,7 +236,7 @@ func (h *TodoHandler) DeleteTodo(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.DeleteTodo(idReq.ID); err != nil {
+	if err := h.service.DeleteTodo(userID, idReq.ID); err != nil {
 		if errors.Is(err, service.ErrTodoNotFound) {
 			response.FailNotFound(c, "任务不存在")
 			return

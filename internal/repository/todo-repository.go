@@ -20,6 +20,7 @@ func NewTodoRepository(db *gorm.DB) *TodoRepository {
 
 // ListTodos 根据条件查询 Todo 任务列表
 type ListTodosParams struct {
+	UserID    uint64
 	Completed *bool
 	Limit     int
 	Offset    int
@@ -31,10 +32,17 @@ func (r *TodoRepository) Create(todo *model.Todo) error {
 }
 
 // GetByID 根据 ID 获取 Todo 任务
-func (r *TodoRepository) GetByID(id int64) (*model.Todo, error) {
+func (r *TodoRepository) GetByID(
+	userID uint64,
+	id int64,
+) (*model.Todo, error) {
 	var todo model.Todo
 
-	if err := r.db.First(&todo, id).Error; err != nil {
+	err := r.db.
+		Where("id = ? AND user_id = ?", id, userID).
+		First(&todo).
+		Error
+	if err != nil {
 		return nil, err
 	}
 
@@ -42,8 +50,12 @@ func (r *TodoRepository) GetByID(id int64) (*model.Todo, error) {
 }
 
 // applyFilters是总数和列表查询的公共方法，用于根据传入的参数应用过滤条件
-func (r *TodoRepository) applyFilters(query *gorm.DB, params ListTodosParams) *gorm.DB {
-	// 如果 Completed 参数不为 nil，则应用过滤条件
+func (r *TodoRepository) applyFilters(
+	query *gorm.DB,
+	params ListTodosParams,
+) *gorm.DB {
+	query = query.Where("user_id = ?", params.UserID)
+
 	if params.Completed != nil {
 		query = query.Where("completed = ?", *params.Completed)
 	}
@@ -82,10 +94,15 @@ func (r *TodoRepository) List(params ListTodosParams) ([]model.Todo, error) {
 }
 
 // 根据id更新任务
-func (r *TodoRepository) Update(id int64, title string, description string) (int64, error) {
+func (r *TodoRepository) Update(
+	userID uint64,
+	id int64,
+	title string,
+	description string,
+) (int64, error) {
 	result := r.db.
 		Model(&model.Todo{}).
-		Where("id = ?", id).
+		Where("id = ? AND user_id = ?", id, userID).
 		Updates(map[string]any{
 			"title":       title,
 			"description": description,
@@ -95,14 +112,24 @@ func (r *TodoRepository) Update(id int64, title string, description string) (int
 }
 
 // 标记完成
-func (r *TodoRepository) MarkCompleted(id int64) error {
+func (r *TodoRepository) MarkCompleted(
+	userID uint64,
+	id int64,
+) error {
 	return r.db.
 		Model(&model.Todo{}).
-		Where("id = ?", id).
-		Update("completed", true).Error
+		Where("id = ? AND user_id = ?", id, userID).
+		Update("completed", true).
+		Error
 }
 
 // 删除任务
-func (r *TodoRepository) Delete(id int64) error {
-	return r.db.Delete(&model.Todo{}, id).Error
+func (r *TodoRepository) Delete(
+	userID uint64,
+	id int64,
+) error {
+	return r.db.
+		Where("id = ? AND user_id = ?", id, userID).
+		Delete(&model.Todo{}).
+		Error
 }

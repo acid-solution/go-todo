@@ -48,8 +48,12 @@ type ListTodosResult struct {
 }
 
 // 创建任务
-func (s *TodoService) CreateTodo(input CreateTodoInput) (*model.Todo, error) {
+func (s *TodoService) CreateTodo(
+	userID uint64,
+	input CreateTodoInput,
+) (*model.Todo, error) {
 	todo := model.Todo{
+		UserID:      userID,
 		Title:       input.Title,
 		Description: input.Description,
 	}
@@ -62,8 +66,11 @@ func (s *TodoService) CreateTodo(input CreateTodoInput) (*model.Todo, error) {
 }
 
 // 根据ID获取任务
-func (s *TodoService) GetTodoByID(id int64) (*model.Todo, error) {
-	todo, err := s.repo.GetByID(id)
+func (s *TodoService) GetTodoByID(
+	userID uint64,
+	id int64,
+) (*model.Todo, error) {
+	todo, err := s.repo.GetByID(userID, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrTodoNotFound
@@ -76,7 +83,10 @@ func (s *TodoService) GetTodoByID(id int64) (*model.Todo, error) {
 }
 
 // 根据条件查询任务列表
-func (s *TodoService) ListTodos(input ListTodosInput) (*ListTodosResult, error) {
+func (s *TodoService) ListTodos(
+	userID uint64,
+	input ListTodosInput,
+) (*ListTodosResult, error) {
 	var completed *bool
 
 	if input.Completed != "" {
@@ -87,6 +97,7 @@ func (s *TodoService) ListTodos(input ListTodosInput) (*ListTodosResult, error) 
 	offset := (input.Page - 1) * input.PageSize
 
 	params := repository.ListTodosParams{
+		UserID:    userID,
 		Completed: completed,
 		Limit:     input.PageSize,
 		Offset:    offset,
@@ -102,7 +113,10 @@ func (s *TodoService) ListTodos(input ListTodosInput) (*ListTodosResult, error) 
 		return nil, err
 	}
 
-	totalPages := int((total + int64(input.PageSize) - 1) / int64(input.PageSize))
+	totalPages := int(
+		(total + int64(input.PageSize) - 1) /
+			int64(input.PageSize),
+	)
 
 	return &ListTodosResult{
 		Items:      todos,
@@ -114,8 +128,17 @@ func (s *TodoService) ListTodos(input ListTodosInput) (*ListTodosResult, error) 
 }
 
 // 更新任务
-func (s *TodoService) UpdateTodo(id int64, input UpdateTodoInput) (*model.Todo, error) {
-	rowsAffected, err := s.repo.Update(id, input.Title, input.Description)
+func (s *TodoService) UpdateTodo(
+	userID uint64,
+	id int64,
+	input UpdateTodoInput,
+) (*model.Todo, error) {
+	rowsAffected, err := s.repo.Update(
+		userID,
+		id,
+		input.Title,
+		input.Description,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -124,27 +147,33 @@ func (s *TodoService) UpdateTodo(id int64, input UpdateTodoInput) (*model.Todo, 
 		return nil, ErrTodoNotFound
 	}
 
-	return s.GetTodoByID(id)
+	return s.GetTodoByID(userID, id)
 }
 
 // 标记完成
-func (s *TodoService) CompleteTodo(id int64) (*model.Todo, error) {
-	if _, err := s.GetTodoByID(id); err != nil {
+func (s *TodoService) CompleteTodo(
+	userID uint64,
+	id int64,
+) (*model.Todo, error) {
+	if _, err := s.GetTodoByID(userID, id); err != nil {
 		return nil, err
 	}
 
-	if err := s.repo.MarkCompleted(id); err != nil {
+	if err := s.repo.MarkCompleted(userID, id); err != nil {
 		return nil, err
 	}
 
-	return s.GetTodoByID(id)
+	return s.GetTodoByID(userID, id)
 }
 
 // 删除任务
-func (s *TodoService) DeleteTodo(id int64) error {
-	if _, err := s.GetTodoByID(id); err != nil {
+func (s *TodoService) DeleteTodo(
+	userID uint64,
+	id int64,
+) error {
+	if _, err := s.GetTodoByID(userID, id); err != nil {
 		return err
 	}
 
-	return s.repo.Delete(id)
+	return s.repo.Delete(userID, id)
 }

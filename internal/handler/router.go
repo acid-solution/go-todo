@@ -8,6 +8,7 @@ func RegisterRoutes(r *gin.Engine, todoHandler *TodoHandler, userHandler *UserHa
 
 	r.POST("/api/register", userHandler.Register)
 	r.POST("/api/login", userHandler.Login)
+	r.POST("/api/refresh", userHandler.Refresh)
 
 	r.POST("/api/todos", todoHandler.CreateTodo)
 	r.GET("/api/todos", todoHandler.ListTodos)

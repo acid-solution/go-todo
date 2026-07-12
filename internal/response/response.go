@@ -17,6 +17,7 @@ const (
 	CodeOK              = 0
 	CodeInvalidArgument = 10001
 	CodeNotFound        = 10002
+	CodeUnauthorized    = 10003
 	CodeInternalError   = 20001
 )
 
@@ -47,4 +48,8 @@ func FailNotFound(c *gin.Context, message string) {
 
 func FailInternalError(c *gin.Context, message string) {
 	fail(c, http.StatusInternalServerError, CodeInternalError, message)
+}
+
+func FailUnauthorized(c *gin.Context, message string) {
+	fail(c, http.StatusUnauthorized, CodeUnauthorized, message)
 }

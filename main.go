@@ -31,14 +31,21 @@ func main() {
 	// 初始化数据库连接
 	db := database.InitMySQL(cfg.MySQLDSN)
 
-	//手动创建三层结构并封装依赖
-	todoRepo := repository.NewTodoRepository(db)
-	todoService := service.NewTodoService(todoRepo)
-	todoHandler := handler.NewTodoHandler(todoService)
+	//手动封装依赖（就是要用到依赖结构的一些函数或变量）
+	todoRepo := repository.NewTodoRepository(db)       //repo依赖数据库实例
+	todoService := service.NewTodoService(todoRepo)    //service依赖repo
+	todoHandler := handler.NewTodoHandler(todoService) //handler依赖service
 
-	userRepo := repository.NewUserRepository(db)
-	userService := service.NewUserService(userRepo)
-	userHandler := handler.NewUserHandler(userService)
+	userRepo := repository.NewUserRepository(db)       //repo依赖数据库实例
+	sessionRepo := repository.NewSessionRepository(db) //repo依赖数据库实例
+	userService := service.NewUserService(             //service依赖两个repo和cfg配置
+		userRepo,
+		sessionRepo,
+		cfg.JWTSecret,
+		cfg.AccessTokenTTL,
+		cfg.RefreshTokenTTL,
+	)
+	userHandler := handler.NewUserHandler(userService) //handler依赖service
 
 	// 创建 Gin 引擎
 	r := gin.New()
