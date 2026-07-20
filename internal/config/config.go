@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -14,6 +15,10 @@ type Config struct {
 	JWTSecret       string
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
+
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       int
 }
 
 func Load() Config {
@@ -25,6 +30,10 @@ func Load() Config {
 		JWTSecret:       getEnv("JWT_SECRET", ""),
 		AccessTokenTTL:  getDurationEnv("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL: getDurationEnv("REFRESH_TOKEN_TTL", 7*24*time.Hour),
+
+		RedisAddr:     getEnv("REDIS_ADDR", "127.0.0.1:6379"),
+		RedisPassword: getEnv("REDIS_PASSWORD", ""),
+		RedisDB:       getIntEnv("REDIS_DB", 0),
 	}
 
 	if cfg.MySQLDSN == "" {
@@ -75,4 +84,18 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	}
 
 	return duration
+}
+
+func getIntEnv(key string, defaultValue int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	// strconv.Atoi 将字符串转换为整数，如果转换失败会返回错误
+	number, err := strconv.Atoi(value)
+	if err != nil {
+		log.Fatalf("%s 必须是整数: %v", key, err)
+	}
+
+	return number
 }

@@ -30,6 +30,13 @@ func main() {
 	cfg := config.Load()
 	// 初始化数据库连接
 	db := database.InitMySQL(cfg.MySQLDSN)
+	// 初始化 Redis 客户端
+	redisClient := database.InitRedis(
+		cfg.RedisAddr,
+		cfg.RedisPassword,
+		cfg.RedisDB,
+	)
+	defer redisClient.Close()
 
 	//手动封装依赖（就是要用到依赖结构的一些函数或变量）
 	todoRepo := repository.NewTodoRepository(db)       //repo依赖数据库实例
