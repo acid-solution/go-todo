@@ -100,6 +100,50 @@ func (c *JSONCache) Delete(
 	return deleted, nil
 }
 
+// DeleteByPattern 扫描并删除所有匹配 pattern 的缓存 key。
+func (c *JSONCache) DeleteByPattern(
+	ctx context.Context,
+	pattern string,
+) (int64, error) {
+	var cursor uint64
+	var totalDeleted int64
+
+	for {
+		//找到的keys，下一批的位置，错误
+		keys, nextCursor, err := c.client.Scan(
+			ctx,     // 控制本次 Redis 操作何时取消
+			cursor,  // 当前扫描游标
+			pattern, // key 匹配规则
+			100,     // 建议每次扫描的数量
+		).Result()
+		if err != nil {
+			return totalDeleted, fmt.Errorf(
+				"扫描缓存 key 失败: %w",
+				err,
+			)
+		}
+		//展开切片并删除缓存
+		if len(keys) > 0 {
+			deleted, err := c.client.Del(ctx, keys...).Result()
+			if err != nil {
+				return totalDeleted, fmt.Errorf(
+					"批量删除缓存失败: %w",
+					err,
+				)
+			}
+			//计算删除数量
+			totalDeleted += deleted
+		}
+		//扫下一批，扫完退出
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+	//返回删除数量
+	return totalDeleted, nil
+}
+
 // TTL 查询缓存 key 的剩余生存时间。
 func (c *JSONCache) TTL(
 	ctx context.Context,

@@ -218,6 +218,7 @@ func (s *TodoService) ListTodos(
 
 // 更新任务
 func (s *TodoService) UpdateTodo(
+	ctx context.Context,
 	userID uint64,
 	id int64,
 	input UpdateTodoInput,
@@ -235,11 +236,14 @@ func (s *TodoService) UpdateTodo(
 		return nil, err
 	}
 
+	s.invalidateTodoListCache(ctx, userID)
+
 	return s.GetTodoByID(userID, id)
 }
 
 // 标记完成
 func (s *TodoService) CompleteTodo(
+	ctx context.Context,
 	userID uint64,
 	id int64,
 ) (*model.Todo, error) {
@@ -251,17 +255,22 @@ func (s *TodoService) CompleteTodo(
 		return nil, err
 	}
 
+	s.invalidateTodoListCache(ctx, userID)
+
 	return s.GetTodoByID(userID, id)
 }
 
 // 删除任务
 func (s *TodoService) DeleteTodo(
+	ctx context.Context,
 	userID uint64,
 	id int64,
 ) error {
 	if _, err := s.GetTodoByID(userID, id); err != nil {
 		return err
 	}
+
+	s.invalidateTodoListCache(ctx, userID)
 
 	return s.repo.Delete(userID, id)
 }
@@ -282,5 +291,39 @@ func buildTodoListCacheKey(
 		input.Page,
 		input.PageSize,
 		completed,
+	)
+}
+
+// 拼接用户缓存匹配模式
+func buildTodoListCachePattern(userID uint64) string {
+	return fmt.Sprintf(
+		"todo:list:user:%d:*",
+		userID,
+	)
+}
+
+// 删除指定用户的所有 Todo 列表缓存。
+func (s *TodoService) invalidateTodoListCache(
+	ctx context.Context,
+	userID uint64,
+) {
+	pattern := buildTodoListCachePattern(userID)
+
+	deleted, err := s.cache.DeleteByPattern(ctx, pattern)
+	if err != nil {
+		s.logger.Warn(
+			"删除 Todo 列表缓存失败",
+			"cache_pattern", pattern,
+			"user_id", userID,
+			"error", err,
+		)
+		return
+	}
+
+	s.logger.Info(
+		"Todo 列表缓存已失效",
+		"cache_pattern", pattern,
+		"user_id", userID,
+		"deleted_count", deleted,
 	)
 }

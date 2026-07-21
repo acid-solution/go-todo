@@ -173,6 +173,7 @@ func (h *TodoHandler) UpdateTodo(c *gin.Context) {
 	}
 
 	todo, err := h.service.UpdateTodo(
+		c.Request.Context(),
 		userID,
 		idReq.ID,
 		service.UpdateTodoInput{
@@ -208,7 +209,7 @@ func (h *TodoHandler) CompleteTodo(c *gin.Context) {
 		return
 	}
 
-	todo, err := h.service.CompleteTodo(userID, idReq.ID)
+	todo, err := h.service.CompleteTodo(c.Request.Context(), userID, idReq.ID)
 	if err != nil {
 		if errors.Is(err, service.ErrTodoNotFound) {
 			response.FailNotFound(c, "任务不存在")
@@ -237,7 +238,7 @@ func (h *TodoHandler) DeleteTodo(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.DeleteTodo(userID, idReq.ID); err != nil {
+	if err := h.service.DeleteTodo(c.Request.Context(), userID, idReq.ID); err != nil {
 		if errors.Is(err, service.ErrTodoNotFound) {
 			response.FailNotFound(c, "任务不存在")
 			return
