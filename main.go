@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 
+	"go-todo/internal/cache"
 	"go-todo/internal/config"
 	"go-todo/internal/database"
 	"go-todo/internal/handler"
@@ -39,9 +40,15 @@ func main() {
 	defer redisClient.Close()
 
 	//手动封装依赖（就是要用到依赖结构的一些函数或变量）
-	todoRepo := repository.NewTodoRepository(db)       //repo依赖数据库实例
-	todoService := service.NewTodoService(todoRepo)    //service依赖repo
-	todoHandler := handler.NewTodoHandler(todoService) //handler依赖service
+	todoRepo := repository.NewTodoRepository(db)
+	todoCache := cache.NewJSONCache(redisClient)
+	todoService := service.NewTodoService(
+		todoRepo,
+		todoCache,
+		cfg.TodoListCacheTTL,
+		logger,
+	)
+	todoHandler := handler.NewTodoHandler(todoService)
 
 	userRepo := repository.NewUserRepository(db)       //repo依赖数据库实例
 	sessionRepo := repository.NewSessionRepository(db) //repo依赖数据库实例

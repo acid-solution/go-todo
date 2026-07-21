@@ -123,6 +123,7 @@ func (h *TodoHandler) ListTodos(c *gin.Context) {
 	}
 
 	result, err := h.service.ListTodos(
+		c.Request.Context(),
 		userID,
 		service.ListTodosInput{
 			Page:      req.Page,

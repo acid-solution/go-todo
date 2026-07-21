@@ -10,11 +10,12 @@ import (
 )
 
 type Config struct {
-	Port            string
-	MySQLDSN        string
-	JWTSecret       string
-	AccessTokenTTL  time.Duration
-	RefreshTokenTTL time.Duration
+	Port             string
+	MySQLDSN         string
+	JWTSecret        string
+	AccessTokenTTL   time.Duration
+	RefreshTokenTTL  time.Duration
+	TodoListCacheTTL time.Duration
 
 	RedisAddr     string
 	RedisPassword string
@@ -25,11 +26,12 @@ func Load() Config {
 	_ = godotenv.Load()
 
 	cfg := Config{
-		Port:            getEnv("PORT", "8081"),
-		MySQLDSN:        getEnv("MYSQL_DSN", ""),
-		JWTSecret:       getEnv("JWT_SECRET", ""),
-		AccessTokenTTL:  getDurationEnv("ACCESS_TOKEN_TTL", 15*time.Minute),
-		RefreshTokenTTL: getDurationEnv("REFRESH_TOKEN_TTL", 7*24*time.Hour),
+		Port:             getEnv("PORT", "8081"),
+		MySQLDSN:         getEnv("MYSQL_DSN", ""),
+		JWTSecret:        getEnv("JWT_SECRET", ""),
+		AccessTokenTTL:   getDurationEnv("ACCESS_TOKEN_TTL", 15*time.Minute),
+		RefreshTokenTTL:  getDurationEnv("REFRESH_TOKEN_TTL", 7*24*time.Hour),
+		TodoListCacheTTL: getDurationEnv("TODO_LIST_CACHE_TTL", 5*time.Minute),
 
 		RedisAddr:     getEnv("REDIS_ADDR", "127.0.0.1:6379"),
 		RedisPassword: getEnv("REDIS_PASSWORD", ""),
@@ -54,6 +56,10 @@ func Load() Config {
 
 	if cfg.RefreshTokenTTL <= 0 {
 		log.Fatal("REFRESH_TOKEN_TTL 必须大于 0")
+	}
+
+	if cfg.TodoListCacheTTL <= 0 {
+		log.Fatal("TODO_LIST_CACHE_TTL 必须大于 0")
 	}
 
 	if cfg.RefreshTokenTTL <= cfg.AccessTokenTTL {
